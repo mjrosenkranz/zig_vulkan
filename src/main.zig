@@ -1,7 +1,9 @@
 const std = @import("std");
+const win = @import("window.zig");
+const vk = @import("vulkan.zig");
 const os = std.os;
 const stdin = std.io.getStdIn().reader();
-const win = @import("window.zig");
+const Allocator = std.mem.Allocator;
 
 var quit = false;
 
@@ -22,6 +24,10 @@ pub fn main() !void {
         .flags = (os.SA_SIGINFO | os.SA_RESETHAND),
     };
     os.sigaction(os.SIGINT, &act, null);
+
+    const allocator = std.heap.c_allocator;
+
+    try vk.createInstance(allocator, @TypeOf(window), window);
 
     while (!quit) {
         var e: win.Event = window.poll();

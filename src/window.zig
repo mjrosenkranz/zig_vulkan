@@ -1,5 +1,6 @@
 //! Wrapper for our game window
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const c = @cImport(
     @cInclude("GLFW/glfw3.h"),
 );
@@ -13,6 +14,7 @@ pub fn Window(
     comptime inner: type,
     comptime destroyFn: fn (win: inner) void,
     comptime pollFn: fn (win: inner) Event,
+    comptime getExtFn: fn (win: inner, allocator: *Allocator) Allocator.Error![][*]const u8,
 ) type {
     return struct {
         win: inner,
@@ -23,10 +25,13 @@ pub fn Window(
         pub fn poll(self: Self) Event {
             return pollFn(self.win);
         }
+        pub fn getExt(self: Self, allocator: *Allocator) ![][*]const u8 {
+            return getExtFn(self.win, allocator);
+        }
     };
 }
 
-pub const GLFWwintype = Window(*c.GLFWwindow, GLFWDestroy, GLFWPoll);
+pub const GLFWwintype = Window(*c.GLFWwindow, GLFWDestroy, GLFWPoll, GLFWExt);
 
 fn GLFWDestroy(win: *c.GLFWwindow) void {
     c.glfwDestroyWindow(win);
@@ -44,10 +49,16 @@ fn GLFWPoll(win: *c.GLFWwindow) Event {
     return Event.None;
 }
 
-pub fn Create(w: u32, h: u32) !Window {
-    // TODO: dynamic dispatch here based on system
-    // for now just calls this guy
-    return glfwwin(w, h);
+fn GLFWExt(win: *c.GLFWwindow, allocator: *Allocator) Allocator.Error![][*]const u8 {
+    var extCount: u32 = 0;
+    var ext_arr = @ptrCast([*]const [*]const u8, c.glfwGetRequiredInstanceExtensions(&extCount));
+
+    // convert to arraylist
+    var extensions = std.ArrayList([*]const u8).init(allocator);
+    errdefer extensions.deinit();
+    try extensions.appendSlice(ext_arr[0..extCount]);
+
+    return extensions.toOwnedSlice();
 }
 
 /// Creates a glfw window
@@ -60,4 +71,9 @@ pub fn glfwwin(w: u32, h: u32) WindowError!GLFWwintype {
 
     const win = c.glfwCreateWindow(@bitCast(c_int, w), @bitCast(c_int, h), "Vulkan", null, null) orelse return error.GlfwCreateWindowFailed;
     return GLFWwintype{ .win = win };
+}
+pub fn Create(w: u32, h: u32) !Window {
+    // TODO: dynamic dispatch here based on system
+    // for now just calls this guy
+    return glfwwin(w, h);
 }
