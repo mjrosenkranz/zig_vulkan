@@ -34,14 +34,13 @@ fn GLFWDestroy(win: *c.GLFWwindow) void {
 }
 
 fn GLFWPoll(win: *c.GLFWwindow) Event {
-    //std.debug.warn("win state {}\n ", .{c.glfwWindowShouldClose(win)});
-    //if ( != 0) {
-    //    std.debug.warn("window closing", .{});
-    //    return Event.Close;
-    //} else {
-    //    return Event.None;
-    //}
-    //
+    c.glfwPollEvents();
+    if (c.glfwWindowShouldClose(win) != 0) {
+        return Event.Close;
+    }
+
+    // TODO: add more events hehe
+
     return Event.None;
 }
 
@@ -59,7 +58,6 @@ pub fn glfwwin(w: u32, h: u32) WindowError!GLFWwintype {
     // delete this later
     c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
 
-    // TODO: cast to c type
-    const win = c.glfwCreateWindow(800, 600, "Vulkan", null, null) orelse return error.GlfwCreateWindowFailed;
+    const win = c.glfwCreateWindow(@bitCast(c_int, w), @bitCast(c_int, h), "Vulkan", null, null) orelse return error.GlfwCreateWindowFailed;
     return GLFWwintype{ .win = win };
 }
