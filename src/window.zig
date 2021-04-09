@@ -57,6 +57,8 @@ fn GLFWExt(win: *c.GLFWwindow, allocator: *Allocator) Allocator.Error![][*]const
     var extensions = std.ArrayList([*]const u8).init(allocator);
     errdefer extensions.deinit();
     try extensions.appendSlice(ext_arr[0..extCount]);
+    // add validation later I guess
+    //try extensions.append(c.VK_EXT_DEBUG_REPORT_EXTZENSION_NAME);
 
     return extensions.toOwnedSlice();
 }
