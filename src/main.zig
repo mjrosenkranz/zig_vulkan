@@ -27,7 +27,8 @@ pub fn main() !void {
 
     const allocator = std.heap.c_allocator;
 
-    try vk.createInstance(allocator, @TypeOf(window), window);
+    var instance = try vk.createInstance(allocator, @TypeOf(window), window);
+    defer vk.destroyInstance(instance);
 
     while (!quit) {
         var e: win.Event = window.poll();

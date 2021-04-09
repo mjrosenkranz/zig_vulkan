@@ -20,7 +20,7 @@ pub fn vksucess(result: c.enum_VkResult) !void {
 //    try createInstance();
 //}
 
-pub fn createInstance(allocator: *Allocator, comptime wtype: type, window: wtype) !void {
+pub fn createInstance(allocator: *Allocator, comptime wtype: type, window: wtype) !c.VkInstance {
     var instance: c.VkInstance = undefined;
     // create app info
     var appInfo: c.VkApplicationInfo = undefined;
@@ -48,4 +48,12 @@ pub fn createInstance(allocator: *Allocator, comptime wtype: type, window: wtype
     };
 
     try vksucess(c.vkCreateInstance(&createInfo, null, &instance));
+    std.debug.print("Vk Instance created\n", .{});
+
+    return instance;
+}
+
+pub fn destroyInstance(instance: c.VkInstance) void {
+    c.vkDestroyInstance(instance, null);
+    std.debug.print("Vk Instance destroyed\n", .{});
 }
