@@ -1,12 +1,18 @@
+//! Wrapper for our game window
+const std = @import("std");
 const c = @cImport(
     @cInclude("GLFW/glfw3.h"),
 );
 
+/// Window error union
 const WindowError = error{ GlfwInitFailed, GlfwCreateWindowFailed };
+
+pub const Event = enum { None, Close };
 
 pub fn Window(
     comptime inner: type,
     comptime destroyFn: fn (win: inner) void,
+    comptime pollFn: fn (win: inner) Event,
 ) type {
     return struct {
         win: inner,
@@ -14,14 +20,29 @@ pub fn Window(
         pub fn destroy(self: Self) void {
             destroyFn(self.win);
         }
+        pub fn poll(self: Self) Event {
+            return pollFn(self.win);
+        }
     };
 }
 
-pub const GLFWwintype = Window(*c.GLFWwindow, GLFWDestroy);
+pub const GLFWwintype = Window(*c.GLFWwindow, GLFWDestroy, GLFWPoll);
 
 fn GLFWDestroy(win: *c.GLFWwindow) void {
     c.glfwDestroyWindow(win);
     c.glfwTerminate();
+}
+
+fn GLFWPoll(win: *c.GLFWwindow) Event {
+    //std.debug.warn("win state {}\n ", .{c.glfwWindowShouldClose(win)});
+    //if ( != 0) {
+    //    std.debug.warn("window closing", .{});
+    //    return Event.Close;
+    //} else {
+    //    return Event.None;
+    //}
+    //
+    return Event.None;
 }
 
 pub fn Create(w: u32, h: u32) !Window {
