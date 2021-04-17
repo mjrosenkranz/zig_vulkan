@@ -4,10 +4,9 @@ const Allocator = std.mem.Allocator;
 const c = @cImport({
     @cInclude("GLFW/glfw3.h");
     @cInclude("vulkan/vulkan.h");
-    //@cInclude("vulkan/vulkan.h");
 });
 
-const stype = c.enum_VkStructureType;
+pub const stype = c.enum_VkStructureType;
 
 pub fn vksucess(result: c.enum_VkResult) !void {
     if (result != c.enum_VkResult.VK_SUCCESS) {
@@ -15,12 +14,8 @@ pub fn vksucess(result: c.enum_VkResult) !void {
     }
 }
 
-/// Initialize vulkan!
-//pub fn init() !void {
-//    try createInstance();
-//}
-
-pub fn createInstance(allocator: *Allocator, comptime wtype: type, window: wtype) !c.VkInstance {
+pub const Instance = c.VkInstance;
+pub fn createInstance(allocator: *Allocator, comptime wtype: type, window: wtype) !Instance {
     var instance: c.VkInstance = undefined;
     // create app info
     var appInfo: c.VkApplicationInfo = undefined;

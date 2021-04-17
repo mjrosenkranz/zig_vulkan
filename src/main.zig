@@ -6,8 +6,8 @@ const stdin = std.io.getStdIn().reader();
 const Allocator = std.mem.Allocator;
 
 const allocator = std.heap.c_allocator;
-var window = undefined;
-var instance = undefined;
+var window: win.Window = undefined;
+var instance: vk.Instance = undefined;
 var quit = false;
 
 pub fn init() !void {
@@ -17,12 +17,12 @@ pub fn init() !void {
         .flags = (os.SA_SIGINFO | os.SA_RESETHAND),
     };
     os.sigaction(os.SIGINT, &act, null);
-    window = try win.glfwwin(800, 600);
+    window = try win.Create(800, 600);
     instance = try vk.createInstance(allocator, @TypeOf(window), window);
 }
 
 pub fn shutdown() void {
-    vk.destroyInstance(instance);
+    //vk.destroyInstance(instance);
     window.destroy();
 }
 
