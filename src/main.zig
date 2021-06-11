@@ -12,7 +12,7 @@ pub fn loop(window: *win.Window) void {
 const allocator = std.heap.page_allocator;
 pub fn main() !void {
     var w = try win.xcb.init(.{});
-    errdefer w.deinit();
+    defer w.deinit();
 
     var ren = try renderer.init(allocator);
     defer ren.deinit();

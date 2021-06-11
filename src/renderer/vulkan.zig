@@ -7,6 +7,8 @@ const Allocator = std.mem.Allocator;
 const Self = @This();
 const s = c.enum_VkStructureType;
 
+var validationEnabled: bool = true;
+
 instance: c.VkInstance = undefined,
 
 
@@ -20,10 +22,23 @@ pub fn deinit(self: *Self) void {
     c.vkDestroyInstance(self.instance, null);
 }
 
-fn vksucess(result: c.enum_VkResult) !void {
+fn vksuccess(result: c.enum_VkResult) !void {
     if (result != c.enum_VkResult.VK_SUCCESS) {
         return error.Unexpected;
     }
+}
+//fn(.vulkan.enum_VkDebugUtilsMessageSeverityFlagBitsEXT,
+//    u32,
+//    [*c]const .vulkan.struct_VkDebugUtilsMessengerCallbackDataEXT,
+//    ?*c_void)
+fn debugCallback(
+    severity: c.VkDebugUtilsMessageSeverityFlagBitsEXT,
+    msgType: c.VkDebugUtilsMessageTypeFlagsEXT,
+    data: [*c]const c.VkDebugUtilsMessengerCallbackDataEXT,
+    userdata: ?*c_void,
+)  callconv(.C) u32 {
+    std.log.warn("{s}", .{data.*.pMessage});
+    return c.VK_FALSE;
 }
 
 fn createInstance(allocator: *Allocator) !c.VkInstance {
@@ -40,12 +55,12 @@ fn createInstance(allocator: *Allocator) !c.VkInstance {
 
     // get extensions we need
     var extCount: u32 = 0;
-    try vksucess(c.vkEnumerateInstanceExtensionProperties(null, &extCount, null));
-    std.log.info("Number of extentions: {}", .{extCount});
+    try vksuccess(c.vkEnumerateInstanceExtensionProperties(null, &extCount, null));
+    std.log.info("Number of available extentions: {}", .{extCount});
 
     var extProperties = try allocator.alloc(c.VkExtensionProperties, extCount);
     defer allocator.free(extProperties);
-    try vksucess(c.vkEnumerateInstanceExtensionProperties(null, &extCount, extProperties.ptr));
+    try vksuccess(c.vkEnumerateInstanceExtensionProperties(null, &extCount, extProperties.ptr));
 
     var extensions = std.ArrayList([*]const u8).init(allocator);
     defer extensions.deinit();
@@ -64,6 +79,7 @@ fn createInstance(allocator: *Allocator) !c.VkInstance {
         .sType = s.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &appInfo,
         .enabledExtensionCount = extCount,
+        // TODO: enable only extensions we are using
         .ppEnabledExtensionNames = extensions.items.ptr,
         .enabledLayerCount = 0, // change this when we add some validation
         .ppEnabledLayerNames = null, // change this when we add some validation
@@ -71,11 +87,57 @@ fn createInstance(allocator: *Allocator) !c.VkInstance {
         .flags = 0,
     };
 
+    // add validation if needbe
+    if (validationEnabled and try hasValidationLayers(allocator)) {
+        createInfo.enabledLayerCount = 1;
+        const layernames: [*]const u8 = "VK_LAYER_KHRONOS_validation";
+        createInfo.ppEnabledLayerNames = &layernames;
+
+        // create the debug thingy
+        var debug: c.VkDebugUtilsMessengerCreateInfoEXT = .{
+            .sType = s.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            .messageSeverity = c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
+                | c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+                |c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageType = c.VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
+                | c.VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
+                |c.VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+            .pfnUserCallback = debugCallback,
+            .pUserData = null,
+            .flags = 0,
+            .pNext = null,
+        };
+
+
+        // set this to be created by the instance
+        createInfo.pNext =@ptrCast(*c.VkDebugUtilsMessengerCreateInfoEXT, &debug) ;
+    }
+
     var inst: c.VkInstance = undefined;
 
-    try vksucess(c.vkCreateInstance(&createInfo, null, &inst));
+    try vksuccess(c.vkCreateInstance(&createInfo, null, &inst));
     std.debug.print("Vk Instance created\n", .{});
 
     return inst;
-    //return error.Unexpected;
+}
+
+fn hasValidationLayers(allocator: *Allocator) !bool {
+    var layerCount: u32 = 0;
+    try vksuccess(c.vkEnumerateInstanceLayerProperties(&layerCount, null));
+
+    var layers = try allocator.alloc(c.VkLayerProperties, layerCount);
+    defer allocator.free(layers);
+
+    try vksuccess(c.vkEnumerateInstanceLayerProperties(&layerCount, layers.ptr));
+
+    var i: usize = 0;
+    // TODO: string compare these bad boys
+//    while (i < layerCount) : (i += 1) {
+//        // compare
+//        if ("VK_LAYER_KHRONOS_validation" == layers[i].layerName) {
+//            return true;
+//        }
+//    }
+//    return false;
+    return true;
 }
