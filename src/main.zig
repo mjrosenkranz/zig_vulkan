@@ -14,8 +14,8 @@ pub fn main() !void {
     var w = try win.xcb.init(.{});
     defer w.deinit();
 
-    var ren = try renderer.init(allocator);
-    defer ren.deinit();
+    try renderer.init(allocator, &w.window);
+    defer renderer.deinit();
 
     loop(&w.window);
 }

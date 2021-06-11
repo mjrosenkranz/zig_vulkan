@@ -1,7 +1,7 @@
 ///! Interface for all windows we can access
-
 const std = @import("std");
 const Window = @This();
+const c = @import("../c.zig");
 
 /// Window geometry
 pub const Geom = struct {
@@ -14,10 +14,16 @@ pub const Geom = struct {
 geom: Geom = .{},
 /// Captures all events on this window
 flushFn: fn (self: *Window) bool,
+// Function for getting the surface
+vksurfaceFn: fn (self: *Window, instance: *c.VkInstance) anyerror!c.VkSurfaceKHR,
 
 /// Captures all events on this window
 pub fn flush(self: *Window) bool {
     return self.flushFn(self);
+}
+
+pub fn getVkSurface(self: *Window, instance: *c.VkInstance) !c.VkSurfaceKHR {
+    return self.vksurfaceFn(self, instance);
 }
 
 pub fn resize(self: *Window, dims: Geom) !void {

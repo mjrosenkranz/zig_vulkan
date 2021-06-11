@@ -1,25 +1,29 @@
 const std = @import("std");
-const c = @import("vulkan");
-const win = @import("window.zig");
+const c = @import("../c.zig");
+const win = @import("../window.zig");
 const stype = c.enum_VkStructureType;
 const Allocator = std.mem.Allocator;
 
 const Self = @This();
 const s = c.enum_VkStructureType;
 
-var validationEnabled: bool = true;
+//TODO: maybe make this implicit to the build level
+/// Should we include the validation layers
+pub var validationEnabled: bool = true;
 
-instance: c.VkInstance = undefined,
+var instance: c.VkInstance = undefined;
+var surface: c.VkSurfaceKHR = undefined;
 
 
-pub fn init(allocator: *Allocator) !Self {
-    return Self{
-        .instance = try createInstance(allocator),
-    };
+pub fn init(allocator: *Allocator, window: *win.Window) !void {
+    instance = try createInstance(allocator);
+    surface = try window.getVkSurface(&instance);
 }
 
-pub fn deinit(self: *Self) void {
-    c.vkDestroyInstance(self.instance, null);
+//pub fn deinit(self: *Self) void {
+pub fn deinit() void {
+    c.vkDestroySurfaceKHR(instance, surface, null);
+    c.vkDestroyInstance(instance, null);
 }
 
 fn vksuccess(result: c.enum_VkResult) !void {
@@ -27,16 +31,14 @@ fn vksuccess(result: c.enum_VkResult) !void {
         return error.Unexpected;
     }
 }
-//fn(.vulkan.enum_VkDebugUtilsMessageSeverityFlagBitsEXT,
-//    u32,
-//    [*c]const .vulkan.struct_VkDebugUtilsMessengerCallbackDataEXT,
-//    ?*c_void)
+
 fn debugCallback(
     severity: c.VkDebugUtilsMessageSeverityFlagBitsEXT,
     msgType: c.VkDebugUtilsMessageTypeFlagsEXT,
     data: [*c]const c.VkDebugUtilsMessengerCallbackDataEXT,
     userdata: ?*c_void,
 )  callconv(.C) u32 {
+    // TODO: use different log levels
     std.log.warn("{s}", .{data.*.pMessage});
     return c.VK_FALSE;
 }
@@ -69,7 +71,7 @@ fn createInstance(allocator: *Allocator) !c.VkInstance {
         var i: usize = 0;
         while (i < extCount) : (i += 1) {
             try extensions.append(&extProperties[i].extensionName);
-            std.log.info("ext: {s}", .{extensions.items[i][0..256]});
+            //std.log.info("ext: {s}", .{extensions.items[i][0..256]});
         }
     }
 

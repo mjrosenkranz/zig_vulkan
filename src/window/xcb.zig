@@ -1,10 +1,6 @@
 const std = @import("std");
-const c = @cImport({
-    @cInclude("xcb/xcb.h");
-    @cInclude("X11/Xlib-xcb.h");
-    @cInclude("X11/Xlib.h");
-});
 const Window = @import("../window.zig").Window;
+const c = @import("../c.zig");
 
 const xcbError = error {
     Connection,
@@ -14,6 +10,7 @@ const xcbError = error {
 pub const xcbWindow = struct {
     window: Window = .{
         .flushFn = flush,
+        .vksurfaceFn = vksurface,
     },
 
     display: ?*c.Display = null,
@@ -123,7 +120,7 @@ pub const xcbWindow = struct {
         };
     }
 
-    pub fn flush(window: *Window) bool {
+    fn flush(window: *Window) bool {
         const self = @fieldParentPtr(Self, "window", window);
 
         // Poll for events until null is returned.
@@ -153,6 +150,25 @@ pub const xcbWindow = struct {
             _ = c.xcb_flush(self.connection);
         }
         return true;
+    }
+
+    fn vksurface(window: *Window, instance: *c.VkInstance) !c.VkSurfaceKHR {
+        const self = @fieldParentPtr(Self, "window", window);
+
+        var create = c.VkXcbSurfaceCreateInfoKHR{
+            .sType = c.enum_VkStructureType.VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+            .connection = self.connection,
+            .window = self.win,
+            .pNext = null,
+            .flags = 0,
+        };
+
+        var surf: c.VkSurfaceKHR = undefined;
+        if (c.vkCreateXcbSurfaceKHR(instance.*, &create, null, &surf) != c.enum_VkResult.VK_SUCCESS) {
+            return error.Unexpected;
+        }
+
+        return surf;
     }
 
     pub fn deinit(self: *Self) void {
