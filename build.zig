@@ -15,8 +15,11 @@ pub fn build(b: *std.build.Builder) void {
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.linkLibC();
+    exe.linkSystemLibrary("xcb");
+    exe.linkSystemLibrary("X11-xcb");
     exe.linkSystemLibrary("glfw");
     exe.linkSystemLibrary("vulkan");
+    exe.addPackage(.{ .name = "vulkan", .path = "lib/vk.zig" });
     exe.install();
 
     const run_cmd = exe.run();
