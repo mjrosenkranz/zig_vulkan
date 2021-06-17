@@ -7,17 +7,23 @@ const Allocator = std.mem.Allocator;
 const Self = @This();
 const s = c.enum_VkStructureType;
 
+// TODO: add more to this and make the vksuccess function use it
+const vkError = error {
+    NoDevicesFound
+};
+
 //TODO: maybe make this implicit to the build level
 /// Should we include the validation layers
 pub var validationEnabled: bool = true;
 
 var instance: c.VkInstance = undefined;
 var surface: c.VkSurfaceKHR = undefined;
-
+var pdev: c.VkPhysicalDevice = undefined;
 
 pub fn init(allocator: *Allocator, window: *win.Window) !void {
     instance = try createInstance(allocator);
     surface = try window.getVkSurface(&instance);
+    pdev = try pickPhysicalDevice(allocator);
 }
 
 //pub fn deinit(self: *Self) void {
@@ -39,7 +45,7 @@ fn debugCallback(
     userdata: ?*c_void,
 )  callconv(.C) u32 {
     // TODO: use different log levels
-    std.log.warn("{s}", .{data.*.pMessage});
+    std.log.info("{s}", .{data.*.pMessage});
     return c.VK_FALSE;
 }
 
@@ -67,12 +73,9 @@ fn createInstance(allocator: *Allocator) !c.VkInstance {
     var extensions = std.ArrayList([*]const u8).init(allocator);
     defer extensions.deinit();
 
-    {
-        var i: usize = 0;
-        while (i < extCount) : (i += 1) {
-            try extensions.append(&extProperties[i].extensionName);
-            //std.log.info("ext: {s}", .{extensions.items[i][0..256]});
-        }
+    var i: usize = 0;
+    while (i < extCount) : (i += 1) {
+        try extensions.append(&extProperties[i].extensionName);
     }
 
 
@@ -142,4 +145,31 @@ fn hasValidationLayers(allocator: *Allocator) !bool {
 //    }
 //    return false;
     return true;
+}
+
+fn pickPhysicalDevice(allocator: *Allocator) !c.VkPhysicalDevice {
+
+    var devCount: u32 = 0;
+    try vksuccess(c.vkEnumeratePhysicalDevices(instance, &devCount, null));
+
+    if (devCount == 0) {
+        return vkError.NoDevicesFound;
+    }
+
+    std.log.info("{} physical devices found!", .{devCount});
+
+    // get them devices
+    var devices = try allocator.alloc(c.VkPhysicalDevice, devCount);
+    defer allocator.free(devices);
+    try vksuccess(c.vkEnumeratePhysicalDevices(instance, &devCount, devices.ptr));
+
+    for (devices) |d| {
+        // get properties of the device
+        var props: c.VkPhysicalDeviceProperties = undefined;
+        c.vkGetPhysicalDeviceProperties(d, &props);
+    }
+
+    var dev: c.VkPhysicalDevice = undefined;
+
+    return dev;
 }
