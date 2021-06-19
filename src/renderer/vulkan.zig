@@ -34,8 +34,9 @@ var graphics_queue: c.VkQueue = undefined;
 var present_queue: c.VkQueue = undefined;
 
 var swapchain: c.VkSwapchainKHR = undefined;
-var swap_chain_format: c.VkSurfaceFormatKHR = undefined;
-var swap_chain_extent: c.VkExtent2D = undefined;
+var swapchain_format: c.VkSurfaceFormatKHR = undefined;
+var swapchain_extent: c.VkExtent2D = undefined;
+var swapchain_images: []c.VkImage = undefined;
 
 const required_ext = [_][]const u8{
     c.VK_KHR_SWAPCHAIN_EXTENSION_NAME
@@ -52,10 +53,18 @@ pub fn init(allocator: *Allocator, window: *win.Window) !void {
     c.vkGetDeviceQueue(device, queue_indices.present.?, 0, &present_queue);
 
     swapchain = try createSwapchain(allocator);
+
+    // get images
+    var image_count: u32 = 0;
+    try vkSuccess(c.vkGetSwapchainImagesKHR(device, swapchain, &image_count, null));
+    swapchain_images = try allocator.alloc(c.VkImage, image_count);
+    defer allocator.free(swapchain_images);
+    try vkSuccess(c.vkGetSwapchainImagesKHR(device, swapchain, &image_count, swapchain_images.ptr));
 }
 
 //pub fn deinit(self: *Self) void {
 pub fn deinit() void {
+    c.vkDestroySwapchainKHR(device, swapchain, null);
     c.vkDestroySurfaceKHR(instance, surface, null);
     c.vkDestroyDevice(device, null);
     c.vkDestroyInstance(instance, null);
@@ -352,12 +361,14 @@ fn createSwapchain(allocator: *Allocator) !c.VkSwapchainKHR {
     var format_count: u32 = 0;
     try vkSuccess(c.vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, null));
     var formats = try allocator.alloc(c.VkSurfaceFormatKHR, format_count);
+    defer allocator.free(formats);
     try vkSuccess(c.vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, formats.ptr));
 
     // get modes
     var mode_count: u32 = 0;
     try vkSuccess(c.vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &mode_count, null));
     var modes = try allocator.alloc(c.VkPresentModeKHR, mode_count);
+    defer allocator.free(modes);
     try vkSuccess(c.vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &mode_count, modes.ptr));
 
     // verify swapchain details
@@ -398,8 +409,8 @@ fn createSwapchain(allocator: *Allocator) !c.VkSwapchainKHR {
     };
 
     // set member variables too
-    swap_chain_format = format;
-    swap_chain_extent = extent;
+    swapchain_format = format;
+    swapchain_extent = extent;
 
     // change sharing mode if the queues are different because we don't need to share queues
     if (queue_indices.graphics.? != queue_indices.present.?) {
