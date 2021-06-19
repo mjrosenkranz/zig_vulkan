@@ -26,6 +26,7 @@ pub var validationEnabled: bool = true;
 var instance: c.VkInstance = undefined;
 var surface: c.VkSurfaceKHR = undefined;
 var pdev: c.VkPhysicalDevice = undefined;
+var device: c.VkDevice = undefined;
 var queue_indices: QueueFamilyIndices = undefined;
 
 const required_ext = [_][]const u8{
@@ -36,11 +37,13 @@ pub fn init(allocator: *Allocator, window: *win.Window) !void {
     instance = try createInstance(allocator);
     surface = try window.getVkSurface(&instance);
     pdev = try pickPhysicalDevice(allocator);
+    device = try createLogicalDevice(allocator);
 }
 
 //pub fn deinit(self: *Self) void {
 pub fn deinit() void {
     c.vkDestroySurfaceKHR(instance, surface, null);
+    c.vkDestroyDevice(device, null);
     c.vkDestroyInstance(instance, null);
 }
 
@@ -264,4 +267,64 @@ fn hadRequiredExt(dev: c.VkPhysicalDevice, allocator: *Allocator) !bool {
     }
 
     return true;
+}
+
+fn createLogicalDevice(allocator: *Allocator) !c.VkDevice {
+    var dev: c.VkDevice = undefined;
+    var idx = std.ArrayList(u32).init(allocator);
+    defer idx.deinit();
+
+    var queues = std.ArrayList(c.VkDeviceQueueCreateInfo).init(allocator);
+    defer queues.deinit();
+
+    // TODO: figure out how many queues we need programatically
+    // for now we know we only need one
+    try idx.append(queue_indices.graphics.?);
+    if (queue_indices.present.? != queue_indices.graphics.?) {
+        try idx.append(queue_indices.present.?);
+    }
+
+    var priority: f32 = 1.0;
+
+    for (idx.items) |i| {
+        var create: c.VkDeviceQueueCreateInfo = .{
+            .sType = s.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            // set graphics index
+            .queueFamilyIndex = i,
+            .queueCount = 1,
+            // make this the highest priority
+            .pQueuePriorities = &priority,
+            .flags = 0,
+            .pNext = null,
+        };
+
+        try queues.append(create);
+    }
+
+    var dev_create: c.VkDeviceCreateInfo = .{
+        .sType = s.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .queueCreateInfoCount = @intCast(u32, queues.items.len),
+        .pQueueCreateInfos = queues.items.ptr,
+        .pEnabledFeatures = null,
+        // no extensions for now
+        .enabledExtensionCount = @intCast(u32, required_ext.len),
+        .ppEnabledExtensionNames = @ptrCast([*c]const [*c]const u8, &required_ext),
+        .enabledLayerCount = 0,
+        .ppEnabledLayerNames = null,
+        .flags = 0,
+        .pNext = null,
+    };
+
+    const layerNames = [_][]const u8{
+        "VK_LAYER_KHRONOS_validation",
+    };
+
+    // add validation if we need to
+    if (validationEnabled) {
+      dev_create.enabledLayerCount = 1;
+      dev_create.ppEnabledLayerNames = @ptrCast([*c]const [*c]const u8, &layerNames);
+    }
+
+    try vksuccess(c.vkCreateDevice(pdev, &dev_create, null, &dev));
+    return dev;
 }
