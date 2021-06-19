@@ -13,6 +13,8 @@ const vkError = error {
     NoSuitableDevice,
     RequiredExtNotFound,
     CannotCreateSwapchain,
+    CannotCreateImageView,
+
 };
 
 const QueueFamilyIndices = struct {
@@ -38,6 +40,8 @@ var swapchain_format: c.VkSurfaceFormatKHR = undefined;
 var swapchain_extent: c.VkExtent2D = undefined;
 var swapchain_images: []c.VkImage = undefined;
 
+var image_views: []c.VkImageView = undefined;
+
 const required_ext = [_][]const u8{
     c.VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
@@ -60,10 +64,15 @@ pub fn init(allocator: *Allocator, window: *win.Window) !void {
     swapchain_images = try allocator.alloc(c.VkImage, image_count);
     defer allocator.free(swapchain_images);
     try vkSuccess(c.vkGetSwapchainImagesKHR(device, swapchain, &image_count, swapchain_images.ptr));
+
+    image_views = try createImageViews(allocator, swapchain_images.len);
 }
 
 //pub fn deinit(self: *Self) void {
 pub fn deinit() void {
+    for (image_views) |img| {
+        c.vkDestroyImageView(device, img, null);
+    }
     c.vkDestroySwapchainKHR(device, swapchain, null);
     c.vkDestroySurfaceKHR(instance, surface, null);
     c.vkDestroyDevice(device, null);
@@ -415,11 +424,11 @@ fn createSwapchain(allocator: *Allocator) !c.VkSwapchainKHR {
     // change sharing mode if the queues are different because we don't need to share queues
     if (queue_indices.graphics.? != queue_indices.present.?) {
         create.imageSharingMode = c.VkSharingMode.VK_SHARING_MODE_CONCURRENT;
-          create.queueFamilyIndexCount = 2;
-          create.pQueueFamilyIndices = &[_]u32{
-              queue_indices.graphics.?,
-              queue_indices.present.?
-          };
+        create.queueFamilyIndexCount = 2;
+        create.pQueueFamilyIndices = &[_]u32{
+            queue_indices.graphics.?,
+            queue_indices.present.?
+        };
     }
 
     var sc: c.VkSwapchainKHR = undefined;
@@ -456,4 +465,45 @@ fn bestMode(modes: []c.VkPresentModeKHR) c.VkPresentModeKHR {
 fn bestExtent(capabilities: c.VkSurfaceCapabilitiesKHR) c.VkExtent2D {
     std.log.info("extent: {}x{}", .{capabilities.currentExtent.width, capabilities.currentExtent.height});
     return capabilities.currentExtent;
+}
+
+fn createImageViews(allocator: *Allocator, num: usize) ![]c.VkImageView {
+    var ivs = try allocator.alloc(c.VkImageView, num);
+
+    var i:u32 = 0;
+    while (i < ivs.len) : (i+=1) {
+        var create: c.VkImageViewCreateInfo = .{
+            .sType = s.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = swapchain_images[i],
+            .viewType = c.VkImageViewType.VK_IMAGE_VIEW_TYPE_2D,
+            .format = swapchain_format.format,
+
+            //// leave colors normal order
+            .components = c.VkComponentMapping{
+                .r = c.VkComponentSwizzle.VK_COMPONENT_SWIZZLE_IDENTITY,
+                .g = c.VkComponentSwizzle.VK_COMPONENT_SWIZZLE_IDENTITY,
+                .b = c.VkComponentSwizzle.VK_COMPONENT_SWIZZLE_IDENTITY,
+                .a = c.VkComponentSwizzle.VK_COMPONENT_SWIZZLE_IDENTITY,
+            },
+
+            //// define purpose and region
+            //// here we just want to copy color
+            .subresourceRange = .{
+                .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                //// we only need one level since our sc has only one
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+            .pNext = null,
+            .flags = 0,
+        };
+
+        if (c.vkCreateImageView(device, &create, null, &ivs[i]) != c.VkResult.VK_SUCCESS) {
+            return vkError.CannotCreateImageView;
+        }
+    }
+
+    return ivs;
 }
