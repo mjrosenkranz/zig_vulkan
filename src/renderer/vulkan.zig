@@ -29,6 +29,9 @@ var pdev: c.VkPhysicalDevice = undefined;
 var device: c.VkDevice = undefined;
 var queue_indices: QueueFamilyIndices = undefined;
 
+var graphics_queue: c.VkQueue = undefined;
+var present_queue: c.VkQueue = undefined;
+
 const required_ext = [_][]const u8{
     c.VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
@@ -38,6 +41,10 @@ pub fn init(allocator: *Allocator, window: *win.Window) !void {
     surface = try window.getVkSurface(&instance);
     pdev = try pickPhysicalDevice(allocator);
     device = try createLogicalDevice(allocator);
+
+    // setup queues
+    c.vkGetDeviceQueue(device, queue_indices.graphics.?, 0, &graphics_queue);
+    c.vkGetDeviceQueue(device, queue_indices.present.?, 0, &present_queue);
 }
 
 //pub fn deinit(self: *Self) void {
