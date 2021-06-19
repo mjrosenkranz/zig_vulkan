@@ -42,6 +42,8 @@ var swapchain_images: []c.VkImage = undefined;
 
 var image_views: []c.VkImageView = undefined;
 
+var render_pass: c.VkRenderPass = undefined;
+
 const required_ext = [_][]const u8{
     c.VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
@@ -66,10 +68,13 @@ pub fn init(allocator: *Allocator, window: *win.Window) !void {
     try vkSuccess(c.vkGetSwapchainImagesKHR(device, swapchain, &image_count, swapchain_images.ptr));
 
     image_views = try createImageViews(allocator, swapchain_images.len);
+
+    render_pass = try createRenderPass();
 }
 
 //pub fn deinit(self: *Self) void {
 pub fn deinit() void {
+    c.vkDestroyRenderPass(device, render_pass, null);
     for (image_views) |img| {
         c.vkDestroyImageView(device, img, null);
     }
@@ -506,4 +511,71 @@ fn createImageViews(allocator: *Allocator, num: usize) ![]c.VkImageView {
     }
 
     return ivs;
+}
+
+fn createRenderPass() !c.VkRenderPass {
+    // describe our color only attachment
+    var color_attachment: c.VkAttachmentDescription = .{
+        .format = swapchain_format.format,
+        // not doing multisampling
+        .samples = c.VkSampleCountFlagBits.VK_SAMPLE_COUNT_1_BIT, 
+        // clear on load
+        .loadOp = c.VkAttachmentLoadOp.VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = c.VkAttachmentStoreOp.VK_ATTACHMENT_STORE_OP_STORE,
+        // don't care about the stencil for now
+        .stencilLoadOp = c.VkAttachmentLoadOp.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = c.VkAttachmentStoreOp.VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        // initial is undefined but we want to present to swapchain at the end
+        .initialLayout = c.VkImageLayout.VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout = c.VkImageLayout.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        .flags = 0,
+    };
+
+    // reference to the above attachment
+    var color_attachment_ref: c.VkAttachmentReference = .{
+        .attachment = 0,
+        .layout = c.VkImageLayout.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    };
+
+    // create a color subpass
+    var  subpass: c.VkSubpassDescription = .{
+        .pipelineBindPoint = c.VkPipelineBindPoint.VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &color_attachment_ref,
+
+        .inputAttachmentCount = 0,
+        .pInputAttachments = null,
+        .pResolveAttachments = null,
+        .pDepthStencilAttachment = null,
+        .preserveAttachmentCount = 0,
+        .pPreserveAttachments = null,
+        .flags = 0,
+    };
+
+    var dependency: c.VkSubpassDependency = .{
+        .dependencyFlags = 0,
+        .srcSubpass = c.VK_SUBPASS_EXTERNAL,
+        .dstSubpass = 0,
+        .srcStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .srcAccessMask = 0,
+        .dstStageMask = c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .dstAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+    };
+
+    var render_pass_info: c.VkRenderPassCreateInfo = .{
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+        .attachmentCount = 1,
+        .pAttachments = &color_attachment,
+        .subpassCount = 1,
+        .pSubpasses = &subpass,
+        .dependencyCount = 1,
+        .pDependencies = &dependency,
+        .pNext = null,
+        .flags = 0,
+    };
+
+
+    var rp: c.VkRenderPass = undefined;
+    try vkSuccess(c.vkCreateRenderPass(device, &render_pass_info, null, &rp));
+    return rp;
 }
