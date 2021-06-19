@@ -9,7 +9,14 @@ const s = c.enum_VkStructureType;
 
 // TODO: add more to this and make the vksuccess function use it
 const vkError = error {
-    NoDevicesFound
+    NoDevicesFound,
+    NoSuitableDevice,
+    RequiredExtNotFound,
+};
+
+const QueueFamilyIndices = struct {
+    graphics: ?u32 = null,
+    present: ?u32 = null,
 };
 
 //TODO: maybe make this implicit to the build level
@@ -19,6 +26,11 @@ pub var validationEnabled: bool = true;
 var instance: c.VkInstance = undefined;
 var surface: c.VkSurfaceKHR = undefined;
 var pdev: c.VkPhysicalDevice = undefined;
+var queue_indices: QueueFamilyIndices = undefined;
+
+const required_ext = [_][]const u8{
+    c.VK_KHR_SWAPCHAIN_EXTENSION_NAME
+};
 
 pub fn init(allocator: *Allocator, window: *win.Window) !void {
     instance = try createInstance(allocator);
@@ -45,7 +57,7 @@ fn debugCallback(
     userdata: ?*c_void,
 )  callconv(.C) u32 {
     // TODO: use different log levels
-    std.log.info("{s}", .{data.*.pMessage});
+    std.log.debug("{s}", .{data.*.pMessage});
     return c.VK_FALSE;
 }
 
@@ -137,17 +149,19 @@ fn hasValidationLayers(allocator: *Allocator) !bool {
 
     var i: usize = 0;
     // TODO: string compare these bad boys
-//    while (i < layerCount) : (i += 1) {
-//        // compare
-//        if ("VK_LAYER_KHRONOS_validation" == layers[i].layerName) {
-//            return true;
-//        }
-//    }
-//    return false;
+    //    while (i < layerCount) : (i += 1) {
+    //        // compare
+    //        if ("VK_LAYER_KHRONOS_validation" == layers[i].layerName) {
+    //            return true;
+    //        }
+    //    }
+    //    return false;
     return true;
 }
 
 fn pickPhysicalDevice(allocator: *Allocator) !c.VkPhysicalDevice {
+
+    var dev: c.VkPhysicalDevice = undefined;
 
     var devCount: u32 = 0;
     try vksuccess(c.vkEnumeratePhysicalDevices(instance, &devCount, null));
@@ -164,12 +178,90 @@ fn pickPhysicalDevice(allocator: *Allocator) !c.VkPhysicalDevice {
     try vksuccess(c.vkEnumeratePhysicalDevices(instance, &devCount, devices.ptr));
 
     for (devices) |d| {
+        dev = d;
         // get properties of the device
         var props: c.VkPhysicalDeviceProperties = undefined;
-        c.vkGetPhysicalDeviceProperties(d, &props);
+        var features: c.VkPhysicalDeviceFeatures = undefined;
+
+        c.vkGetPhysicalDeviceProperties(dev, &props);
+        c.vkGetPhysicalDeviceFeatures(dev, &features);
+
+        queue_indices = try findQueueFamliyIndices(d, allocator);
+
+        std.log.info("device {s}, type {}", .{props.deviceName, props.deviceType});
+
+        // TODO: make config of required features
+        // for now hardcoded
+
+        // checks if we have graphics and present features
+        if (
+            features.geometryShader == 1
+            and queue_indices.graphics != null
+            and queue_indices.present != null
+        ) {
+            // if so then we need to check if we have all the required extensions
+            if (!try hadRequiredExt(dev, allocator)) {
+                return vkError.RequiredExtNotFound;
+            }
+
+            return dev;
+        }
+    }
+    return vkError.NoSuitableDevice;
+}
+
+fn findQueueFamliyIndices(dev: c.VkPhysicalDevice, allocator: *Allocator) !QueueFamilyIndices {
+    var ret: QueueFamilyIndices = .{};
+    // find queue families
+    var queue_count: u32 = 0;
+    c.vkGetPhysicalDeviceQueueFamilyProperties(dev, &queue_count, null);
+
+    var queue_families = try allocator.alloc(c.VkQueueFamilyProperties, queue_count);
+    defer allocator.free(queue_families);
+
+    c.vkGetPhysicalDeviceQueueFamilyProperties(dev, &queue_count, queue_families.ptr);
+
+
+    var i: u32 = 0;
+    while (i < queue_count) : (i += 1) {
+        // has graphics support
+        if ((queue_families[@intCast(usize,i)].queueFlags & c.VK_QUEUE_GRAPHICS_BIT) == 1) {
+            ret.graphics = i;
+        }
+        // presentation support
+        var has_present: u32 = 0;
+        try vksuccess(c.vkGetPhysicalDeviceSurfaceSupportKHR(dev, i, surface, &has_present));
+        if (has_present == 1) {
+            ret.present = i;
+        }
     }
 
-    var dev: c.VkPhysicalDevice = undefined;
+    return ret;
+}
 
-    return dev;
+fn hadRequiredExt(dev: c.VkPhysicalDevice, allocator: *Allocator) !bool {
+    var ext_count: u32 = 0;
+    try vksuccess(c.vkEnumerateDeviceExtensionProperties(dev, null, &ext_count, null));
+    var avail_ext = try allocator.alloc(c.VkExtensionProperties, ext_count);
+    defer allocator.free(avail_ext);
+    try vksuccess(c.vkEnumerateDeviceExtensionProperties(dev, null, &ext_count, avail_ext.ptr));
+
+    // check if we have this extension in required list
+    for (required_ext) |re| {
+        var found = false;
+        for (avail_ext) |ext| {
+            const name = std.mem.span(&ext.extensionName);
+            // TODO: make this work better with edge cases
+            if (std.mem.indexOfDiff(u8, re, name) == re.len) {
+                found = true;
+            }
+        }
+
+        if (!found) {
+            std.log.err("Cound not find {s}", .{re});
+            return false;
+        }
+    }
+
+    return true;
 }
