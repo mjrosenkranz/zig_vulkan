@@ -7,11 +7,12 @@ const Allocator = std.mem.Allocator;
 const Self = @This();
 const s = c.enum_VkStructureType;
 
-// TODO: add more to this and make the vksuccess function use it
+// TODO: add more to this and make the vkSuccess function use it
 const vkError = error {
     NoDevicesFound,
     NoSuitableDevice,
     RequiredExtNotFound,
+    CannotCreateSwapchain,
 };
 
 const QueueFamilyIndices = struct {
@@ -32,6 +33,10 @@ var queue_indices: QueueFamilyIndices = undefined;
 var graphics_queue: c.VkQueue = undefined;
 var present_queue: c.VkQueue = undefined;
 
+var swapchain: c.VkSwapchainKHR = undefined;
+var swap_chain_format: c.VkSurfaceFormatKHR = undefined;
+var swap_chain_extent: c.VkExtent2D = undefined;
+
 const required_ext = [_][]const u8{
     c.VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
@@ -45,6 +50,8 @@ pub fn init(allocator: *Allocator, window: *win.Window) !void {
     // setup queues
     c.vkGetDeviceQueue(device, queue_indices.graphics.?, 0, &graphics_queue);
     c.vkGetDeviceQueue(device, queue_indices.present.?, 0, &present_queue);
+
+    swapchain = try createSwapchain(allocator);
 }
 
 //pub fn deinit(self: *Self) void {
@@ -54,7 +61,7 @@ pub fn deinit() void {
     c.vkDestroyInstance(instance, null);
 }
 
-fn vksuccess(result: c.enum_VkResult) !void {
+fn vkSuccess(result: c.enum_VkResult) !void {
     if (result != c.enum_VkResult.VK_SUCCESS) {
         return error.Unexpected;
     }
@@ -85,12 +92,12 @@ fn createInstance(allocator: *Allocator) !c.VkInstance {
 
     // get extensions we need
     var extCount: u32 = 0;
-    try vksuccess(c.vkEnumerateInstanceExtensionProperties(null, &extCount, null));
+    try vkSuccess(c.vkEnumerateInstanceExtensionProperties(null, &extCount, null));
     std.log.info("Number of available extentions: {}", .{extCount});
 
     var extProperties = try allocator.alloc(c.VkExtensionProperties, extCount);
     defer allocator.free(extProperties);
-    try vksuccess(c.vkEnumerateInstanceExtensionProperties(null, &extCount, extProperties.ptr));
+    try vkSuccess(c.vkEnumerateInstanceExtensionProperties(null, &extCount, extProperties.ptr));
 
     var extensions = std.ArrayList([*]const u8).init(allocator);
     defer extensions.deinit();
@@ -142,7 +149,7 @@ fn createInstance(allocator: *Allocator) !c.VkInstance {
 
     var inst: c.VkInstance = undefined;
 
-    try vksuccess(c.vkCreateInstance(&createInfo, null, &inst));
+    try vkSuccess(c.vkCreateInstance(&createInfo, null, &inst));
     std.debug.print("Vk Instance created\n", .{});
 
     return inst;
@@ -150,12 +157,12 @@ fn createInstance(allocator: *Allocator) !c.VkInstance {
 
 fn hasValidationLayers(allocator: *Allocator) !bool {
     var layerCount: u32 = 0;
-    try vksuccess(c.vkEnumerateInstanceLayerProperties(&layerCount, null));
+    try vkSuccess(c.vkEnumerateInstanceLayerProperties(&layerCount, null));
 
     var layers = try allocator.alloc(c.VkLayerProperties, layerCount);
     defer allocator.free(layers);
 
-    try vksuccess(c.vkEnumerateInstanceLayerProperties(&layerCount, layers.ptr));
+    try vkSuccess(c.vkEnumerateInstanceLayerProperties(&layerCount, layers.ptr));
 
     var i: usize = 0;
     // TODO: string compare these bad boys
@@ -174,7 +181,7 @@ fn pickPhysicalDevice(allocator: *Allocator) !c.VkPhysicalDevice {
     var dev: c.VkPhysicalDevice = undefined;
 
     var devCount: u32 = 0;
-    try vksuccess(c.vkEnumeratePhysicalDevices(instance, &devCount, null));
+    try vkSuccess(c.vkEnumeratePhysicalDevices(instance, &devCount, null));
 
     if (devCount == 0) {
         return vkError.NoDevicesFound;
@@ -185,7 +192,7 @@ fn pickPhysicalDevice(allocator: *Allocator) !c.VkPhysicalDevice {
     // get them devices
     var devices = try allocator.alloc(c.VkPhysicalDevice, devCount);
     defer allocator.free(devices);
-    try vksuccess(c.vkEnumeratePhysicalDevices(instance, &devCount, devices.ptr));
+    try vkSuccess(c.vkEnumeratePhysicalDevices(instance, &devCount, devices.ptr));
 
     for (devices) |d| {
         dev = d;
@@ -240,7 +247,7 @@ fn findQueueFamliyIndices(dev: c.VkPhysicalDevice, allocator: *Allocator) !Queue
         }
         // presentation support
         var has_present: u32 = 0;
-        try vksuccess(c.vkGetPhysicalDeviceSurfaceSupportKHR(dev, i, surface, &has_present));
+        try vkSuccess(c.vkGetPhysicalDeviceSurfaceSupportKHR(dev, i, surface, &has_present));
         if (has_present == 1) {
             ret.present = i;
         }
@@ -251,10 +258,10 @@ fn findQueueFamliyIndices(dev: c.VkPhysicalDevice, allocator: *Allocator) !Queue
 
 fn hadRequiredExt(dev: c.VkPhysicalDevice, allocator: *Allocator) !bool {
     var ext_count: u32 = 0;
-    try vksuccess(c.vkEnumerateDeviceExtensionProperties(dev, null, &ext_count, null));
+    try vkSuccess(c.vkEnumerateDeviceExtensionProperties(dev, null, &ext_count, null));
     var avail_ext = try allocator.alloc(c.VkExtensionProperties, ext_count);
     defer allocator.free(avail_ext);
-    try vksuccess(c.vkEnumerateDeviceExtensionProperties(dev, null, &ext_count, avail_ext.ptr));
+    try vkSuccess(c.vkEnumerateDeviceExtensionProperties(dev, null, &ext_count, avail_ext.ptr));
 
     // check if we have this extension in required list
     for (required_ext) |re| {
@@ -328,10 +335,114 @@ fn createLogicalDevice(allocator: *Allocator) !c.VkDevice {
 
     // add validation if we need to
     if (validationEnabled) {
-      dev_create.enabledLayerCount = 1;
-      dev_create.ppEnabledLayerNames = @ptrCast([*c]const [*c]const u8, &layerNames);
+        dev_create.enabledLayerCount = 1;
+        dev_create.ppEnabledLayerNames = @ptrCast([*c]const [*c]const u8, &layerNames);
     }
 
-    try vksuccess(c.vkCreateDevice(pdev, &dev_create, null, &dev));
+    try vkSuccess(c.vkCreateDevice(pdev, &dev_create, null, &dev));
     return dev;
+}
+
+fn createSwapchain(allocator: *Allocator) !c.VkSwapchainKHR {
+    // get swapchain support details
+    var capabilities: c.VkSurfaceCapabilitiesKHR = undefined;
+    try vkSuccess(c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pdev, surface, &capabilities));
+
+    // get formats
+    var format_count: u32 = 0;
+    try vkSuccess(c.vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, null));
+    var formats = try allocator.alloc(c.VkSurfaceFormatKHR, format_count);
+    try vkSuccess(c.vkGetPhysicalDeviceSurfaceFormatsKHR(pdev, surface, &format_count, formats.ptr));
+
+    // get modes
+    var mode_count: u32 = 0;
+    try vkSuccess(c.vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &mode_count, null));
+    var modes = try allocator.alloc(c.VkPresentModeKHR, mode_count);
+    try vkSuccess(c.vkGetPhysicalDeviceSurfacePresentModesKHR(pdev, surface, &mode_count, modes.ptr));
+
+    // verify swapchain details
+    std.log.info("surface modes: {}, formats: {}", .{modes.len, formats.len});
+    if (modes.len == 0 or formats.len == 0) return vkError.CannotCreateSwapchain;
+
+    // chose best format, mode, and extent
+    const format = bestFormat(formats);
+    const mode = bestMode(modes);
+    const extent = bestExtent(capabilities);
+
+    // use at least one more than the minimum image count
+    var image_count: u32 = capabilities.minImageCount + 1;
+    // if that is more than the max image count then set it to the max
+    if (capabilities.maxImageCount > 0 and image_count > capabilities.maxImageCount) {
+        image_count = capabilities.maxImageCount;
+    }
+
+    var create: c.VkSwapchainCreateInfoKHR = .{
+        .sType = s.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface = surface,
+        .minImageCount = image_count,
+        .imageFormat = format.format,
+        .imageColorSpace = format.colorSpace,
+        .imageExtent = extent,
+        .imageArrayLayers = 1,
+        .imageUsage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageSharingMode = c.VkSharingMode.VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = null,
+        .preTransform = capabilities.currentTransform,
+        .compositeAlpha = c.VkCompositeAlphaFlagBitsKHR.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode = mode,
+        .clipped = c.VK_TRUE,
+        .oldSwapchain = null,
+        .pNext = null,
+        .flags = 0,
+    };
+
+    // set member variables too
+    swap_chain_format = format;
+    swap_chain_extent = extent;
+
+    // change sharing mode if the queues are different because we don't need to share queues
+    if (queue_indices.graphics.? != queue_indices.present.?) {
+        create.imageSharingMode = c.VkSharingMode.VK_SHARING_MODE_CONCURRENT;
+          create.queueFamilyIndexCount = 2;
+          create.pQueueFamilyIndices = &[_]u32{
+              queue_indices.graphics.?,
+              queue_indices.present.?
+          };
+    }
+
+    var sc: c.VkSwapchainKHR = undefined;
+
+    try vkSuccess(c.vkCreateSwapchainKHR(device, &create, null, &sc));
+
+    return sc;
+}
+
+fn bestFormat(formats: []c.VkSurfaceFormatKHR) c.VkSurfaceFormatKHR {
+    for (formats) |f| {
+        if (f.format == c.VkFormat.VK_FORMAT_B8G8R8A8_SRGB and f.colorSpace == c.VkColorSpaceKHR.VK_COLORSPACE_SRGB_NONLINEAR_KHR)
+            return f;
+    }
+
+    std.log.warn("Could not find preferred format", .{});
+    // default to first if there are no modes we want
+    return formats[0];
+}
+
+fn bestMode(modes: []c.VkPresentModeKHR) c.VkPresentModeKHR {
+    for (modes) |m| {
+        std.log.info("pmode: {}", .{m});
+        if (m == c.VkPresentModeKHR.VK_PRESENT_MODE_MAILBOX_KHR) {
+            return m;
+        }
+    }
+
+    std.log.warn("Could not find preferred present mode", .{});
+    // if we don't have mailbox then this is guranteed to exist
+    return c.VkPresentModeKHR.VK_PRESENT_MODE_FIFO_KHR;
+}
+
+fn bestExtent(capabilities: c.VkSurfaceCapabilitiesKHR) c.VkExtent2D {
+    std.log.info("extent: {}x{}", .{capabilities.currentExtent.width, capabilities.currentExtent.height});
+    return capabilities.currentExtent;
 }
