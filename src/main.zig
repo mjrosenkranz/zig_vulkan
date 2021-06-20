@@ -11,7 +11,7 @@ pub fn loop(window: *win.Window) void {
 
 const allocator = std.heap.page_allocator;
 pub fn main() !void {
-    var w = try win.xcb.init(.{});
+    var w = try win.xcb.init(.{.x=800, .y=600});
     defer w.deinit();
 
     try renderer.init(allocator, &w.window);
