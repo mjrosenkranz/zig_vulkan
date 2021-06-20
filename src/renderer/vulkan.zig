@@ -1,11 +1,9 @@
 const std = @import("std");
 const c = @import("../c.zig");
 const win = @import("../window.zig");
-const stype = c.enum_VkStructureType;
 const Allocator = std.mem.Allocator;
 
 const Self = @This();
-const s = c.enum_VkStructureType;
 
 // TODO: add more to this and make the vkSuccess function use it
 const vkError = error {
@@ -70,6 +68,8 @@ pub fn init(allocator: *Allocator, window: *win.Window) !void {
     image_views = try createImageViews(allocator, swapchain_images.len);
 
     render_pass = try createRenderPass();
+
+    //graphics_pipeline = try createGraphicsPipeline();
 }
 
 //pub fn deinit(self: *Self) void {
@@ -104,7 +104,7 @@ fn debugCallback(
 fn createInstance(allocator: *Allocator) !c.VkInstance {
     // create app info
     var appInfo: c.VkApplicationInfo = .{
-        .sType = s.VK_STRUCTURE_TYPE_APPLICATION_INFO,
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .applicationVersion = c.VK_MAKE_VERSION(1, 0, 0),
         .pApplicationName = "TestApp",
         .pEngineName = "octal-zig",
@@ -133,7 +133,7 @@ fn createInstance(allocator: *Allocator) !c.VkInstance {
 
     // create creation info
     var createInfo: c.VkInstanceCreateInfo = .{
-        .sType = s.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &appInfo,
         .enabledExtensionCount = extCount,
         // TODO: enable only extensions we are using
@@ -152,7 +152,7 @@ fn createInstance(allocator: *Allocator) !c.VkInstance {
 
         // create the debug thingy
         var debug: c.VkDebugUtilsMessengerCreateInfoEXT = .{
-            .sType = s.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            .sType = c.VkStructureType.VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
             .messageSeverity = c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
                 | c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
                 |c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
@@ -325,7 +325,7 @@ fn createLogicalDevice(allocator: *Allocator) !c.VkDevice {
 
     for (idx.items) |i| {
         var create: c.VkDeviceQueueCreateInfo = .{
-            .sType = s.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .sType = c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             // set graphics index
             .queueFamilyIndex = i,
             .queueCount = 1,
@@ -339,7 +339,7 @@ fn createLogicalDevice(allocator: *Allocator) !c.VkDevice {
     }
 
     var dev_create: c.VkDeviceCreateInfo = .{
-        .sType = s.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .queueCreateInfoCount = @intCast(u32, queues.items.len),
         .pQueueCreateInfos = queues.items.ptr,
         .pEnabledFeatures = null,
@@ -402,7 +402,7 @@ fn createSwapchain(allocator: *Allocator) !c.VkSwapchainKHR {
     }
 
     var create: c.VkSwapchainCreateInfoKHR = .{
-        .sType = s.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = surface,
         .minImageCount = image_count,
         .imageFormat = format.format,
@@ -478,7 +478,7 @@ fn createImageViews(allocator: *Allocator, num: usize) ![]c.VkImageView {
     var i:u32 = 0;
     while (i < ivs.len) : (i+=1) {
         var create: c.VkImageViewCreateInfo = .{
-            .sType = s.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .sType = c.VkStructureType.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image = swapchain_images[i],
             .viewType = c.VkImageViewType.VK_IMAGE_VIEW_TYPE_2D,
             .format = swapchain_format.format,
@@ -579,3 +579,5 @@ fn createRenderPass() !c.VkRenderPass {
     try vkSuccess(c.vkCreateRenderPass(device, &render_pass_info, null, &rp));
     return rp;
 }
+
+//fn createGraphicsPipeline() !
