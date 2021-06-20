@@ -42,6 +42,8 @@ var image_views: []c.VkImageView = undefined;
 
 var render_pass: c.VkRenderPass = undefined;
 
+var graphics_pipeline: c.VkPipeline = undefined;
+
 const required_ext = [_][]const u8{
     c.VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
@@ -69,7 +71,7 @@ pub fn init(allocator: *Allocator, window: *win.Window) !void {
 
     render_pass = try createRenderPass();
 
-    //graphics_pipeline = try createGraphicsPipeline();
+    graphics_pipeline = try createGraphicsPipeline();
 }
 
 //pub fn deinit(self: *Self) void {
@@ -580,4 +582,201 @@ fn createRenderPass() !c.VkRenderPass {
     return rp;
 }
 
-//fn createGraphicsPipeline() !
+fn createShaderModule(code: []align(@alignOf(u32))const u8) !c.VkShaderModule {
+    var create: c.VkShaderModuleCreateInfo = .{
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .codeSize = code.len,
+        .pCode = std.mem.bytesAsSlice(u32, code).ptr,
+    };
+
+    var module: c.VkShaderModule = undefined;
+    try vkSuccess(c.vkCreateShaderModule(device, &create, null, &module));
+
+    return module;
+}
+
+fn createGraphicsPipeline() !type {
+    
+    const vert_code align(4)= @embedFile("../../shaders/bin/vert.spv").*;
+    const frag_code align(4)= @embedFile("../../shaders/bin/frag.spv").*;
+    
+    const vert = try createShaderModule(&vert_code);
+    const frag = try createShaderModule(&frag_code);
+
+    const shader_stages = [_]c.VkPipelineShaderStageCreateInfo{
+        // vertex stage
+        .{
+            .sType = c.VkStructureType.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = c.VkShaderStageFlagBits.VK_SHADER_STAGE_VERTEX_BIT,
+            .module = vert,
+            .pName = "main",
+            .pSpecializationInfo = null,
+            .flags = 0,
+            .pNext = null,
+        },
+
+        // fragment stage
+        .{
+            .sType = c.VkStructureType.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = c.VkShaderStageFlagBits.VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = frag,
+            .pName = "main",
+            .pSpecializationInfo = null,
+            .pNext = null,
+            .flags = 0,
+        }
+
+    };
+
+    // vertext layout
+    const vertex_layout: c.VkPipelineVertexInputStateCreateInfo = .{
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .vertexBindingDescriptionCount = 0,
+        .pVertexBindingDescriptions = null,
+        .vertexAttributeDescriptionCount = 0,
+        .pVertexAttributeDescriptions = null,
+        .pNext = null,
+        .flag = 0,
+    };
+
+    // vertex use
+    const inputAsm: c.VkPipelineInputAssemblyStateCreateInfo = .{
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = c.VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .primitiveRestartEnable = c.VK_FALSE,
+        .pNext = null,
+        .flag = 0,
+    };
+
+    const view_port: c.VkViewport = .{
+        .x = 0.0,
+        .y = 0.0,
+        .width =   @intToFloat(f32, swapchain_extent.width),
+        .height =  @intToFloat(f32, swapchain_extent.height),
+        .minDepth = 0.0,
+        .minDepth = 1.0,
+    };
+
+    // crop on viewport
+    const scissor: c.VkRect2D = .{
+        .offset = .{.x=0, .y=0},
+        .extent = swapchain_extent,
+    };
+
+    // combine to make viewport state
+    const viewportState: VkPipelineViewportStateCreateInfo = .{
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .pViewports = &viewport,
+        .scissorCount = 1,
+        .pScissors = &scissor,
+    };
+
+    const rasterizer: VkPipelineRasterizationStateCreateInfo = .{
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        // discard things that are too far away instead of clamping
+        .depthClampEnable = c.VK_FALSE,
+        .rasterizerDiscardEnable = c.VK_FALSE,
+
+        // TODO: look into using feature which allows lines
+        .polygonMode = c.VK_POLYGON_MODE_FILL,
+        .lineWidth = 1.0,
+        .cullMode = c.VK_CULL_MODE_BACK_BIT,
+        .frontFace = c.VK_FRONT_FACE_CLOCKWISE,
+
+        // don't fuck with the depth values
+        .depthBiasEnable = c.VK_FALSE,
+        .depthBiasConstantFactor = 0.0,
+        .depthBiasSlopeFactor = 0.0,
+        .depthBiasClamp = 0.0,
+    };
+
+    // Don't multisample for now
+    const multisampling: c.VkPipelineMultisampleStateCreateInfo = .{
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .sampleShadingEnable = c.VK_FALSE,
+        .rasterizationSamples = c.VK_SAMPLE_COUNT_1_BIT,
+        .minSampleShading = 1.00,
+        .pSampleMask = null,
+        .alphaToCoverageEnable = c.VK_FALSE,
+        .alphaToOneEnable = c.VK_FALSE,
+    };
+
+
+    // TODO: add depth and stencil buffers here
+
+    // Color blending (off for now)
+    const color_blend_attachment: c.VkPipelineColorBlendAttachmentState = .{
+        .colorWriteMask = c.VK_COLOR_COMPONENT_R_BIT | c.VK_COLOR_COMPONENT_G_BIT
+            | c.VK_COLOR_COMPONENT_B_BIT | c.VK_COLOR_COMPONENT_A_BIT,
+        .blendEnable = c.VK_TRUE,
+        .srcColorBlendFactor = c.VK_BLEND_FACTOR_SRC_ALPHA,
+        .dstColorBlendFactor = c.VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        .colorBlendOp = c.VK_BLEND_OP_ADD,
+        .srcAlphaBlendFactor = c.VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = c.VK_BLEND_FACTOR_ZERO,
+        .alphaBlendOp = c.VK_BLEND_OP_ADD,
+    };
+    
+    const color_blending: c.VkPipelineColorBlendStateCreateInfo = .{
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        //colorBlending.logicOpEnable = VK_TRUE,
+        .logicOpEnable = VK_FALSE,
+        .logicOp = VK_LOGIC_OP_COPY, // Optional
+        .attachmentCount = 1,
+        .pAttachments = &colorBlendAttachment,
+        // we aren't using these so
+        .blendConstants = &[_]f32{0.0, 0.0, 0.0, 0.0},
+    };
+
+    // dynamic state, we'll keep this blank for now
+    //VkDynamicState dynamicStates[] = { };
+    const dynamic_state: c.VkPipelineDynamicStateCreateInfo = .{
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = 0,
+        .pDynamicStates = null,
+    };
+
+    // pipeline layout
+    const pipelineLayout: c.VkPipelineLayoutCreateInfo = .{
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 0,
+        .pSetLayouts = null,
+        // can use these to pass dynamic values
+        .pushConstantRangeCount = 0,
+        .pPushConstantRanges = null,
+    };
+
+    try vkSuccess(vkCreatePipelineLayout(device, &pipelineLayout, null, &m_PipelineLayout));
+
+    // create the pipeline
+    const pipeline_info: c.VkGraphicsPipelineCreateInfo = .{
+        .sType = c.VkStructureType.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .stageCount = 2,
+        .pStages = shaderStages,
+
+        .pVertexInputState    = &vertexInput,
+        .pInputAssemblyState  = &inputAsm,
+        .pViewportState       = &viewportState,
+        .pRasterizationState  = &rasterizer,
+        .pMultisampleState    = &multisampling,
+        .pDepthStencilState   = nullptr,
+        .pColorBlendState     = &colorBlending,
+        .pDynamicState        = nullptr,
+
+        .layout = pipelineLayout,
+        .renderPass = render_pass,
+        .subpass = 0,
+
+        .basePipelineHandle = VK_NULL_HANDLE,
+        .basePipelineIndex = -1,
+    };
+
+    var gp: c.VkPipeline = undefined;
+
+    vkSuccess(vkCreateGraphicsPipelines(device, null, 1, &pipeline_info, null, &gp));
+
+    return gp;
+}
